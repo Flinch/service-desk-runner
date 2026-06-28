@@ -1,12 +1,47 @@
 import express from 'express';
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs, { existsSync, readdirSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+//for the test video component
+app.get('/test-video', (req, res) => {
+  const testResultsDir = path.join(__dirname, 'test-results');
+  
+  try {
+    // Find the most recent video file across all test result folders
+    const folders = readdirSync(testResultsDir);
+    let latestVideo = null;
+    let latestTime = 0;
+
+    for (const folder of folders) {
+      const videoPath = path.join(testResultsDir, folder, 'video.webm');
+      if (existsSync(videoPath)) {
+        const { mtimeMs } = fs.statSync(videoPath);
+        if (mtimeMs > latestTime) {
+          latestTime = mtimeMs;
+          latestVideo = videoPath;
+        }
+      }
+    }
+
+    if (!latestVideo) {
+      res.status(404).json({ error: 'No video found' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'video/webm');
+    res.setHeader('Access-Control-Allow-Origin', 'https://qa-blueprint.vercel.app');
+    fs.createReadStream(latestVideo).pipe(res);
+
+  } catch (err) {
+    res.status(404).json({ error: 'No test results found' });
+  }
+});
 
 // Track if a run is in progress (prevent concurrent runs)
 let isRunning = false;
