@@ -11,11 +11,6 @@ const PORT = process.env.PORT || 3001;
 // Track if a run is in progress (prevent concurrent runs)
 let isRunning = false;
 
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || '*',
-  methods: ['GET', 'POST'],
-}));
-
 app.use(express.json());
 
 //allow requests from vercel domain
