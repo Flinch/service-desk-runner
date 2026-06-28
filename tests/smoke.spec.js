@@ -1,16 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { createTicket } from '../../helpers/createTicket';
-import { loginAsAdmin } from '../../helpers/auth';
+import { createTicket } from '../helpers/createTicket';
+import { loginAsAdmin } from '../helpers/auth';
 
 // These @smoke tests are what the demo triggers.
 // Keep them fast (< 30s total) and reliable.
 
 const url = 'https://service-desk-roan.vercel.app';
-
-test.beforeEach(async ({ page }) => {
-  await page.goto(url);
-  await loginAsAdmin(page);
-});
 
 test("@smoke login page has title", async ({page})=>{
   await page.goto('https://service-desk-roan.vercel.app');
