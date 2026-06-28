@@ -19,6 +19,17 @@ app.use(cors({
 
 app.use(express.json());
 
+//allow requests from vercel domain
+app.use(cors({
+  origin: 'https://qa-blueprint.vercel.app',
+  methods: ['GET', 'POST'],
+}));
+
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN || 'https://qa-blueprint.vercel.app',
+  methods: ['GET', 'POST'],
+}));
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', running: isRunning });
