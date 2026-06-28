@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 30000,
   retries: 1,
   use: {
-    baseURL: process.env.BASE_URL || 'https://your-desk-app.vercel.app',
+    baseURL: process.env.BASE_URL || 'https://service-desk-roan.vercel.app/',
     headless: true,
     video: 'on',           // record every run
     screenshot: 'only-on-failure',
