@@ -1,70 +1,35 @@
 import express from 'express';
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs, { existsSync, readdirSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://qa-blueprint.vercel.app';
 
-//for the test video component
-app.get('/test-video', (req, res) => {
-  const testResultsDir = path.join(__dirname, 'test-results');
-  
-  try {
-    // Find the most recent video file across all test result folders
-    const folders = readdirSync(testResultsDir);
-    let latestVideo = null;
-    let latestTime = 0;
-
-    for (const folder of folders) {
-      const videoPath = path.join(testResultsDir, folder, 'video.webm');
-      if (existsSync(videoPath)) {
-        const { mtimeMs } = fs.statSync(videoPath);
-        if (mtimeMs > latestTime) {
-          latestTime = mtimeMs;
-          latestVideo = videoPath;
-        }
-      }
-    }
-
-    if (!latestVideo) {
-      res.status(404).json({ error: 'No video found' });
-      return;
-    }
-
-    res.setHeader('Content-Type', 'video/webm');
-    res.setHeader('Access-Control-Allow-Origin', 'https://qa-blueprint.vercel.app');
-    fs.createReadStream(latestVideo).pipe(res);
-
-  } catch (err) {
-    res.status(404).json({ error: 'No test results found' });
-  }
-});
-
-// Track if a run is in progress (prevent concurrent runs)
 let isRunning = false;
 
-app.use(express.json());
-
-//allow requests from vercel domain
+// Manual CORS middleware — handles SSE correctly
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://qa-blueprint.vercel.app');
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
   res.setHeader('Access-Control-Allow-Credentials', 'false');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(204);
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
   next();
 });
 
+app.use(express.json());
+
+// Serve the Playwright HTML report as static files
+app.use('/report', express.static(path.join(__dirname, 'playwright-report')));
+
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', running: isRunning });
+  const reportReady = existsSync(path.join(__dirname, 'playwright-report', 'index.html'));
+  res.json({ status: 'ok', running: isRunning, reportReady });
 });
 
 // SSE endpoint — streams Playwright output line by line
@@ -74,11 +39,10 @@ app.get('/run-tests', (req, res) => {
     return;
   }
 
-  // SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // important for Railway/nginx proxies
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   const send = (type, data) => {
@@ -93,13 +57,13 @@ app.get('/run-tests', (req, res) => {
   const env = {
     ...process.env,
     BASE_URL: process.env.BASE_URL || 'https://your-desk-app.vercel.app',
-    FORCE_COLOR: '0', // disable color codes in streamed output
+    FORCE_COLOR: '0',
   };
 
-  // Run only @smoke tagged tests
+  // Run with both line reporter (for streaming) and html reporter (for the report)
   const playwright = spawn(
     'npx',
-    ['playwright', 'test', '--grep', '@smoke', '--reporter=line'],
+    ['playwright', 'test', '--grep', '@smoke', '--reporter=line,html'],
     { env, cwd: __dirname }
   );
 
@@ -125,17 +89,16 @@ app.get('/run-tests', (req, res) => {
       send('status', `Tests finished with failures (exit code ${code})`);
     }
 
-    // Check if a video was recorded
-    const videoDir = path.join(__dirname, 'test-results');
-    if (existsSync(videoDir)) {
-      send('video', '/test-video');
+    // Send report link if it was generated
+    const reportExists = existsSync(path.join(__dirname, 'playwright-report', 'index.html'));
+    if (reportExists) {
+      send('report', `${process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : 'http://localhost:' + PORT}/report`);
     }
 
     send('done', true);
     res.end();
   });
 
-  // Clean up if client disconnects
   req.on('close', () => {
     if (isRunning) {
       playwright.kill();
