@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -20,15 +19,18 @@ app.use(cors({
 app.use(express.json());
 
 //allow requests from vercel domain
-app.use(cors({
-  origin: 'https://qa-blueprint.vercel.app',
-  methods: ['GET', 'POST'],
-}));
-
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || 'https://qa-blueprint.vercel.app',
-  methods: ['GET', 'POST'],
-}));
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://qa-blueprint.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
+  res.setHeader('Access-Control-Allow-Credentials', 'false');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
 
 // Health check
 app.get('/health', (req, res) => {
